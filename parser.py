@@ -1,189 +1,87 @@
-import asyncio, aiohttp, csv
+import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
-from tqdm import tqdm
+from urllib.parse import urljoin
+import time
 
-
-class ProductParser:
-    def __init__(self, base_url, pagination_param='page', max_pages=1,
-                 card_selector='', title_selector='', link_selector=''):
-        self.base_url = base_url
-        self.pagination_param = pagination_param
-        self.max_pages = max_pages
-        self.card_selector = card_selector
-        self.title_selector = title_selector
+#Парсим каталог товаров
+class CatalogScraper:
+    def __init__(self, url_template, total_pages, product_selector, name_selector, link_selector, price_selector, delay=1):
+        """
+        :param url_template: Строка с шаблоном URL, например: "https://example.com/catalog?page={page}"
+        :param total_pages: Количество страниц для парсинга
+        :param product_selector: CSS-селектор карточки товара
+        :param name_selector: CSS-селектор названия товара внутри карточки
+        :param link_selector: CSS-селектор ссылки на товар внутри карточки
+        :param price_selector: CSS-селектор цены внутри карточки
+        :param delay: Задержка между запросами (секунды)
+        """
+        self.url_template = url_template
+        self.total_pages = total_pages
+        self.product_selector = product_selector
+        self.name_selector = name_selector
         self.link_selector = link_selector
+        self.price_selector = price_selector
+        self.delay = delay
+        self.base_url = "{0.scheme}://{0.netloc}".format(requests.utils.urlparse(url_template))
 
-    def build_url(self, page_num):
-        parts = urlparse(self.base_url)
-        query = parse_qs(parts.query)
-        query[self.pagination_param] = [str(page_num)]
-        new_query = urlencode(query, doseq=True)
-        return urlunparse((parts.scheme, parts.netloc, parts.path, parts.params, new_query, parts.fragment))
+    def _fetch_page(self, url):
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        return response.text
 
-    async def fetch(self, session, url):
-        try:
-            async with session.get(url, timeout=10) as resp:
-                resp.raise_for_status()
-                return await resp.text()
-        except Exception as e:
-            print(f"[Ошибка запроса] {url}: {e}")
-            return ''
-
-    def parse_html(self, html):
-        soup = BeautifulSoup(html, 'html.parser')
+    def _parse_products(self, html):
+        soup = BeautifulSoup(html, "html.parser")
         products = []
 
-        for card in soup.select(self.card_selector):
-            title_elem = card.select_one(self.title_selector)
-            link_elem = card.select_one(self.link_selector)
+        for card in soup.select(self.product_selector):
+            try:
+                name_elem = card.select_one(self.name_selector)
+                link_elem = card.select_one(self.link_selector)
+                price_elem = card.select_one(self.price_selector)
 
-            title = title_elem.get_text(strip=True) if title_elem else 'Нет названия'
-            relative_link = link_elem['href'] if link_elem and 'href' in link_elem.attrs else None
-            full_link = urljoin(self.base_url, relative_link) if relative_link else 'Нет ссылки'
+                if not (name_elem and link_elem and price_elem):
+                    continue
 
-            products.append({
-                'title': title,
-                'url': full_link
-            })
+                name = name_elem.get_text(strip=True)
+                rel_link = link_elem.get("href")
+                link = urljoin(self.base_url, rel_link)
+                price = price_elem.get_text(strip=True)
 
+                products.append({
+                    "name": name,
+                    "url": link,
+                    "price": price
+                })
+            except Exception as e:
+                print(f"⚠️ Ошибка при парсинге товара: {e}")
         return products
 
-    async def fetch_and_parse(self, session, page_num):
-        url = self.build_url(page_num)
-        html = await self.fetch(session, url)
-        return self.parse_html(html)
-
-    async def parse_all(self):
+    def run(self):
         all_products = []
-        async with aiohttp.ClientSession() as session:
-            tasks = [self.fetch_and_parse(session, page)
-                     for page in range(1, self.max_pages + 1)]
 
-            for coro in tqdm(asyncio.as_completed(tasks), total=self.max_pages, desc="Парсинг товаров"):
-                result = await coro
-                all_products.extend(result)
+        for page in range(1, self.total_pages + 1):
+            page_url = self.url_template.format(page=page)
+            print(f"📄 Парсинг страницы {page}: {page_url}")
+
+            try:
+                html = self._fetch_page(page_url)
+                products = self._parse_products(html)
+                all_products.extend(products)
+            except Exception as e:
+                print(f"❌ Ошибка при обработке страницы {page}: {e}")
+
+            time.sleep(self.delay)
+
         return all_products
 
 
-class ProductDetailParser:
-    def __init__(self,
-                 features_block_selector,
-                 param_name_selector,
-                 param_value_selector,
-                 price_selector=None,
-                 discount_price_selector=None,
-                 image_selector=None):
-        """
-        :param features_block_selector: Селектор блока с характеристиками
-        :param param_name_selector: Селектор названия характеристики
-        :param param_value_selector: Селектор значения характеристики
-        :param price_selector: Селектор обычной цены
-        :param discount_price_selector: Селектор цены со скидкой (если есть)
-        :param image_selector: Селектор изображения
-        """
-        self.features_block_selector = features_block_selector
-        self.param_name_selector = param_name_selector
-        self.param_value_selector = param_value_selector
-        self.price_selector = price_selector
-        self.discount_price_selector = discount_price_selector
-        self.image_selector = image_selector
+#Получаем ссылки на товары из структуры 
+class URLExtractor:
+    def __init__(self, data):
+        self.data = data
 
-    async def fetch_html(self, session, url):
-        try:
-            async with session.get(url, timeout=10) as resp:
-                resp.raise_for_status()
-                return await resp.text()
-        except Exception as e:
-            print(f"[Ошибка при запросе] {url}: {e}")
-            return ''
-
-    def parse_features(self, soup):
-        data = {}
-
-        block = soup.select_one(self.features_block_selector)
-        if not block:
-            return data
-
-        names = block.select(self.param_name_selector)
-        values = block.select(self.param_value_selector)
-
-        for name, value in zip(names, values):
-            key = name.get_text(strip=True)
-            val = value.get_text(strip=True)
-            if key:
-                data[key] = val
-
-        return data
-
-    def parse_prices(self, soup):
-        """Извлекает обычную и скидочную цену (если есть)."""
-        price = None
-        discount_price = None
-
-        if self.price_selector:
-            price_elem = soup.select_one(self.price_selector)
-            if price_elem:
-                price = price_elem.get_text(strip=True)
-
-        if self.discount_price_selector:
-            discount_elem = soup.select_one(self.discount_price_selector)
-            if discount_elem:
-                discount_price = discount_elem.get_text(strip=True)
-
-        return price, discount_price
-
-    def parse_image(self, soup, base_url):
-        if not self.image_selector:
-            return None
-        elem = soup.select_one(self.image_selector)
-        if elem and 'src' in elem.attrs:
-            return urljoin(base_url, elem['src'])
-        return None
-
-    async def parse_all_product_details(self, products):
-        results = []
-        async with aiohttp.ClientSession() as session:
-            tasks = [self._parse_single(session, product) for product in products]
-
-            for coro in tqdm(asyncio.as_completed(tasks), total=len(products), desc="Парсинг характеристик"):
-                result = await coro
-                results.append(result)
-        return results
-
-    async def _parse_single(self, session, product):
-        html = await self.fetch_html(session, product['url'])
-        soup = BeautifulSoup(html, 'html.parser')
-
-        features = self.parse_features(soup)
-        price, discount_price = self.parse_prices(soup)
-        image = self.parse_image(soup, product['url'])
-
-        return {
-            **product,
-            **features,
-            'price': price,
-            'discount_price': discount_price,
-            'image': image
-        }
-    
-class CSVExporter:
-    def __init__(self, filename='output.csv'):
-        self.filename = filename
-
-    def export(self, data):
-        if not data:
-            print("[WARN] Нет данных для экспорта.")
-            return
-
-        fieldnames = sorted({key for item in data for key in item.keys()})
-
-        try:
-            with open(self.filename, mode='w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                writer.writeheader()
-                for row in data:
-                    writer.writerow(row)
-            print(f"[INFO] Данные успешно сохранены в {self.filename}")
-        except Exception as e:
-            print(f"[ERROR] Ошибка при записи CSV: {e}")
+    def extract_urls(self):
+        return [item['url'] for item in self.data if 'url' in item]

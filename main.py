@@ -1,29 +1,31 @@
-import asyncio
-from parser import ProductParser, ProductDetailParser, CSVExporter
+from parser import CatalogScraper, URLExtractor
+from selenium_parser import PageDownloader
 
-if __name__ == '__main__':
-    parser = ProductParser(
-        base_url='https://berg-air.ru/catalog/vintovye-kompressory/',
-        pagination_param='PAGEN_1',
-        max_pages=2,
-        card_selector='.catalog-section-item-content',
-        title_selector='.catalog-section-item-name-wrapper',
-        link_selector='a'
+if __name__ == "__main__":
+    #Парсинг каталога настройка селекторов
+    scraper = CatalogScraper(
+        url_template="https://air-vint.ru/catalog/kompressory/vintovye_kompressory/filter/brand-is-triumph/apply/?PAGEN_1={page}",
+        total_pages=1,
+        product_selector=".catalog_item",
+        name_selector=".item-title span",
+        link_selector=".item-title a",
+        price_selector=".price_value",
+        delay=1
     )
 
+    catalog_items = scraper.run()
 
-    products = asyncio.run(parser.parse_all())
+    #Сбор урл из словаря
+    extractor = URLExtractor(catalog_items)
+    product_urls = extractor.extract_urls()
 
-    detail_parser = ProductDetailParser(
-        features_block_selector='.catalog-element-section-properties',
-        param_name_selector='.catalog-element-section-property-name',
-        param_value_selector='.catalog-element-section-property-value',
-        price_selector='.catalog-element-price-discount',
-        discount_price_selector='.catalog-element-offers-property-value-text-checkbox-price',
-        image_selector='.catalog-element-gallery-picture-wrapper img'
-    )
+    #Парсинг с поддгрузкой JS страниц товаров
+    downloader = PageDownloader(product_urls, wait_selector=".product-title", timeout=15, headless=True)
+    downloader.download_pages()
 
-    detailed_products = asyncio.run(detail_parser.parse_all_product_details(products))
+    # Сохраняем в файлы с именами по номеру
+    for i, (url, html) in enumerate(downloader.html_pages.items(), 1):
+        with open(f"page_{i}.html", "w", encoding="utf-8") as f:
+            f.write(html)
 
-    exporter = CSVExporter('products.csv')
-    exporter.export(detailed_products)
+    downloader.quit()
