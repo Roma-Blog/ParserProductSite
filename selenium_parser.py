@@ -46,8 +46,8 @@ class PageDownloader:
             # Ждём нужный элемент (если задан)
             if self.wait_selector:
                 try:
-                    WebDriverWait(self.driver, self.timeout).until(
-                        EC.visibility_of_element_located((By.CSS_SELECTOR, self.wait_selector))
+                    WebDriverWait(self.driver, self.timeout * 4).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, self.wait_selector))
                     )
                 except Exception as e:
                     print(f"⚠️ Элемент '{self.wait_selector}' не найден или не видим: {e}")
