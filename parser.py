@@ -5,15 +5,16 @@ import csv
 
 #Парсим каталог товаров
 class CatalogScraper:
-    def __init__(self, url_template, total_pages, product_selector, name_selector, link_selector, price_selector, delay=1):
+    def __init__(self, url_template, total_pages, product_selector, name_selector, link_selector, price_selector, delay=1, num_start_page = 1):
         """
-        :param url_template: Строка с шаблоном URL, например: "https://example.com/catalog?page={page}"
+        :param url_template: Строка с шаблоном URL, например: "https://site.com/catalog?page={page}"
         :param total_pages: Количество страниц для парсинга
         :param product_selector: CSS-селектор карточки товара
         :param name_selector: CSS-селектор названия товара внутри карточки
         :param link_selector: CSS-селектор ссылки на товар внутри карточки
         :param price_selector: CSS-селектор цены внутри карточки
         :param delay: Задержка между запросами (секунды)
+        :param num_start_page: номер страницы каталога с которого начинается парсинг
         """
         self.url_template = url_template
         self.total_pages = total_pages
@@ -22,6 +23,7 @@ class CatalogScraper:
         self.link_selector = link_selector
         self.price_selector = price_selector
         self.delay = delay
+        self.num_start_page = num_start_page
         self.base_url = "{0.scheme}://{0.netloc}".format(requests.utils.urlparse(url_template))
 
     def _fetch_page(self, url):
@@ -43,6 +45,7 @@ class CatalogScraper:
                 price_elem = card.select_one(self.price_selector)
 
                 if not (name_elem and link_elem):
+                    print("Проьлема с элементами: " + name_elem + " | " + link_elem)
                     continue
 
                 name = name_elem.get_text(strip=True)
@@ -66,7 +69,7 @@ class CatalogScraper:
     def run(self):
         all_products = []
 
-        for page in range(1, self.total_pages + 1):
+        for page in range(self.num_start_page, self.total_pages + 1):
             page_url = self.url_template.format(page=page)
             print(f"📄 Парсинг страницы {page}: {page_url}")
 

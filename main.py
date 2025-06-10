@@ -4,11 +4,11 @@ from selenium_parser import PageDownloader
 if __name__ == "__main__":
     #Парсинг каталога настройка селекторов
     scraper = CatalogScraper(
-        url_template="https://erstvak.com/industrial/vintovye-kompressory/?PAGEN_1={page}",
-        total_pages=23,
-        product_selector=".prods__pitem",
-        name_selector=".pitem__title",
-        link_selector=".prods__pitem a",
+        url_template="https://habe.com.ru/catalog/vintovye_kompressory/?page-{page}",
+        total_pages=1,
+        product_selector=".list_item",
+        name_selector="a.js-notice-block__title span",
+        link_selector="a.js-notice-block__title",
         price_selector=".price_value",
         delay=1
     )
@@ -23,10 +23,10 @@ if __name__ == "__main__":
     downloader = PageDownloader(product_urls, timeout=30, headless=True)
     downloader.download_pages()
 
-    parser = CharacteristicsParser(downloader.html_pages, ".pdetail__char-l", ".pdetail__char-v")
+    parser = CharacteristicsParser(downloader.html_pages, ".properties-group__name", ".properties-group__value")
     result = parser.parse_all()
 
-    parser = ImagePreviewParser(downloader.html_pages, ".pdetail__im img")
+    parser = ImagePreviewParser(downloader.html_pages, "img.detail-gallery-big__picture")
     images = parser.parse_all()
 
     merger = ProductDataMerger(catalog_items, result, images)
