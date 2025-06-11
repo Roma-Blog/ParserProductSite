@@ -4,12 +4,13 @@ from selenium_parser import PageDownloader
 if __name__ == "__main__":
     #Парсинг каталога настройка селекторов
     scraper = CatalogScraper(
-        url_template="https://habe.com.ru/catalog/vintovye_kompressory/?page-{page}",
-        total_pages=1,
-        product_selector=".list_item",
-        name_selector="a.js-notice-block__title span",
-        link_selector="a.js-notice-block__title",
-        price_selector=".price_value",
+        url_template="https://ctt-stroy.ru/product/peredvizhnye-kompressory/filter/brand-is-liugong/apply/?PAGEN_2={page}",
+        total_pages=3,
+        product_selector=".catalog-block__wrapper",
+        name_selector="a.switcher-title span",
+        link_selector="a.switcher-title",
+        price_selector=".price__new-val",
+        num_start_page = 1,
         delay=1
     )
 
@@ -23,10 +24,10 @@ if __name__ == "__main__":
     downloader = PageDownloader(product_urls, timeout=30, headless=True)
     downloader.download_pages()
 
-    parser = CharacteristicsParser(downloader.html_pages, ".properties-group__name", ".properties-group__value")
+    parser = CharacteristicsParser(downloader.html_pages, ".props_item.js-prop-title span", ".char_value.js-prop-value span")
     result = parser.parse_all()
 
-    parser = ImagePreviewParser(downloader.html_pages, "img.detail-gallery-big__picture")
+    parser = ImagePreviewParser(downloader.html_pages, "img.catalog-detail__gallery__picture")
     images = parser.parse_all()
 
     merger = ProductDataMerger(catalog_items, result, images)

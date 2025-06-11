@@ -201,7 +201,7 @@ class ProductDataMerger:
         fieldnames = sorted(all_keys)
 
         with open(filepath, mode="w", encoding="utf-8-sig", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer = csv.DictWriter(f, fieldnames=fieldnames, quotechar='"', quoting=csv.QUOTE_ALL)
             writer.writeheader()
             writer.writerows(self.result)
 
